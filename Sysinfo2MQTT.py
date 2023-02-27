@@ -15,6 +15,7 @@ __maintainer__ = "Patrick Horbach"
 __email__ = ""
 __status__ = "Production"
 
+import os
 import time
 import paho.mqtt.client as mqtt
 from queue import Queue
@@ -29,15 +30,23 @@ BROKER_PORT = 1883
 def on_connect(client, userdata, flags, rc):  # The callback for when the client connects to the broker
     print("Connected with result code {0}".format(str(rc)))  # Print result of connection attempt
     client.subscribe(ctlTopic)  # Subscribe to the topic
+    client.subscribe(ctlShutdown)  # Subscribe to the topic
 
 def on_message(client, userdata, msg):  # The callback for when a PUBLISH message is received from the server.
     if msg.topic == ctlTopic:
-        q.put(int(msg.payload.decode("utf-8")))
-        print("Intervall vom MQTT: " + str(msg.payload.decode("utf-8")))
+        try:
+            q.put(int(msg.payload.decode("utf-8")))
+            print("Intervall vom MQTT: " + str(msg.payload.decode("utf-8")))
+        except:
+            print("not an int")
+    if msg.topic == ctlShutdown:
+        print("poweroff")
+        os.system("sudo shutdown now")
 
 #get Systemname
 sysname = platform.uname().node
 ctlTopic = "server/"+sysname+"/control/UpdateInterval"
+ctlShutdown = "server/"+sysname+"/control/poweroff"
 client =mqtt.Client(sysname)
 client.on_connect = on_connect  # Define callback function for successful connection
 client.on_message = on_message  # Define callback function for receipt of a message
@@ -51,9 +60,11 @@ interval = 60
 client.loop_start()
 while True:
 
-    # get control interval data from queue and set it as sleeptime
+    # get control interval data from queue and set it as sleeptime, limit between 5 and 120
     while not q.empty():
         interval = q.get()
+        if interval <= 5: interval = 5
+        if interval >= 120: interval = 120
 
     # Interval
     client.publish("server/"+sysname+"/UpdateInterval", interval)
